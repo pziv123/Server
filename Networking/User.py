@@ -4,7 +4,7 @@ import threading
 from Utility.cipher import Cipher
 
 
-class ClientConnection:
+class User:
     def __init__(self, tcp_socket: socket, address, udp_socket: socket):
         self.tcp_socket = tcp_socket
         self.udp_socket = udp_socket
