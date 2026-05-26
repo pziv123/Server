@@ -3,54 +3,63 @@ import threading
 
 from Utility.cipher import Cipher
 
-class User:
-    def __init__(self, tcpClient: socket, address, udpSocket):
 
-        self.TcpClient = tcpClient
-        self.Address = address
+class ClientConnection:
+    def __init__(self, tcp_socket: socket, address, udp_socket: socket):
+        self.tcp_socket = tcp_socket
+        self.udp_socket = udp_socket
+        self.address = address
 
-        self.UdpSocket = udpSocket
+        self.cipher = None
+        self.shared_key = None
 
-        self.UdpAddr = None
+        threading.Thread(target=self.handle_tcp,daemon=True).start()
 
-        self.Cipher = None
-        self.Diff = None
-        self.PublicKey = None
+    def perform_handshake(self):
+        client_public_key = self.tcp_socket.recv(1024)
 
-        threading.Thread(
-            target=self.handleTCP,
-            daemon=True
-        ).start()
+        private_key, public_key = Cipher.get_dh_public_key()
 
-    def handleTCP(self):
+        shared_key = Cipher.get_dh_shared_key(
+            private_key,
+            client_public_key
+        )
+
+        self.shared_key = shared_key
+        self.cipher = Cipher(shared_key)
+
+        self.tcp_socket.send(public_key)
+
+        print(f"[HANDSHAKE] Connected to {self.address}")
+
+    def handle_tcp(self):
         try:
-
-            clientKey = self.TcpClient.recv(1024)
-
-            diff, publicKey = Cipher.get_dh_public_key()
-
-            sharedKey = Cipher.get_dh_shared_key(diff,clientKey)
-
-            self.Cipher = Cipher(sharedKey)
-
-            self.Diff = diff
-            self.PublicKey = publicKey
-
-            self.TcpClient.send(publicKey)
-
-            print(f"Handshake complete: {self.Address}")
+            self.perform_handshake()
 
             while True:
+                encrypted_packet = self.tcp_socket.recv(1024)
 
-                packet = self.TcpClient.recv(1024)
-
-                if not packet:
-                    print(f"TCP disconnected: {self.Address}")
+                if not encrypted_packet:
+                    print(f"[TCP] Disconnected: {self.address}")
                     break
 
-                decrypted = self.Cipher.aes_decrypt(packet)
+                decrypted_packet = self.cipher.aes_decrypt(
+                    encrypted_packet
+                )
 
-                print("TCP:", decrypted)
+                print(
+                    f"[TCP] {self.address}: "
+                    f"{decrypted_packet}"
+                )
 
-        except Exception as e:
-            print("TCP ERROR:", e)
+        except Exception as error:
+            print(f"[TCP ERROR] {self.address}: {error}")
+
+        finally:
+            self.disconnect()
+
+    def disconnect(self):
+        try:
+            self.tcp_socket.close()
+        except:
+            pass

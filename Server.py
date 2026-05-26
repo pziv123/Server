@@ -1,82 +1,80 @@
 import socket
 import threading
-import Networking.Global
+
+import Constants
+import Networking.Saved
 from Networking.User import User
 
-TCP_PORT = 3683
-UDP_PORT = 5682
 
-ServerTCPSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-ServerUDPSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-def handleUDP():
+
+def broadcast(data: bytes, sender: User):
+    for user in Networking.Saved.Users:
+        if user is sender:
+            continue
+
+        if user.address == sender.address:
+            continue
+
+        if user.cipher is None or user.udp_address is None:
+            continue
+
+        try:
+            encrypted = user.cipher.aes_encrypt(data)
+            server_udp_socket.sendto(encrypted, user.udp_address)
+
+        except Exception as e:
+            print(f"[UDP SEND ERROR] {e}")
+
+
+def handle_udp():
     while True:
         try:
-            packet, addr = ServerUDPSocket.recvfrom(65507)
-            sender = None
+            packet, address = server_udp_socket.recvfrom(Constants.MAX_PACKET_SIZE)
 
-            for user in Networking.Global.Users:
-                if user.UdpAddr == addr:
+            sender = None
+            for user in Networking.Saved.Users:
+                if user.udp_address == address:
                     sender = user
                     break
 
-            if sender is None:
-                for user in Networking.Global.Users:
-                    if user.UdpAddr is None:
-                        user.UdpAddr = addr
-                        sender = user
-
-                        print(f"UDP registered: {addr} for {user.Address}")
-                        break
-
-            if sender is None:
+            if sender is None or sender.cipher is None:
                 continue
 
-            if sender.Cipher is None:
-                continue
+            decrypted = sender.cipher.aes_decrypt(packet)
 
-            decrypted = sender.Cipher.aes_decrypt(packet)
+            if sender.udp_address is None:
+                sender.udp_address = address
+                print(f"[UDP] Registered {sender.address} -> {address}")
 
-            for user in Networking.Global.Users:
-                if user.UdpAddr == sender.UdpAddr:
-                    continue
-
-                if user.UdpAddr is None:
-                    continue
-
-                if user.Cipher is None:
-                    continue
-
-                try:
-                    encrypted = user.Cipher.aes_encrypt(decrypted)
-
-                    ServerUDPSocket.sendto(encrypted,user.UdpAddr)
-
-                except Exception as e:
-                    print("Send error:", e)
+            broadcast(decrypted, sender)
 
         except Exception as e:
-            print("UDP LOOP ERROR:", e)
+            print(f"[UDP LOOP ERROR] {e}")
 
 
-def init():
+def handle_tcp_client(client_socket, address):
+    user = User(client_socket, address, server_udp_socket)
+    Networking.Global.Users.append(user)
+    print(f"[TCP] User connected: {address}")
+
+
+def start_server():
     print("Server starting...")
 
-    ServerTCPSocket.bind(("0.0.0.0", TCP_PORT))
-    ServerTCPSocket.listen(100)
+    server_tcp_socket.bind(("0.0.0.0", Constants.TCP_PORT))
+    server_tcp_socket.listen(100)
 
-    ServerUDPSocket.bind(("0.0.0.0", UDP_PORT))
+    server_udp_socket.bind(("0.0.0.0", Constants.UDP_PORT))
 
-    threading.Thread(target=handleUDP, daemon=True).start()
+    threading.Thread(target=handle_udp, daemon=True).start()
 
     while True:
-        client, addr = ServerTCPSocket.accept()
-
-        user = User(client,addr,ServerUDPSocket)
-
-        Networking.Global.Users.append(user)
-
-        print(f"User connected: {addr}")
+        client_socket, address = server_tcp_socket.accept()
+        handle_tcp_client(client_socket, address)
 
 
-init()
+if __name__ == "__main__":
+    start_server()
