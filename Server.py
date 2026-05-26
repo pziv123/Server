@@ -36,7 +36,7 @@ def handle_udp():
 
             sender = None
             for user in Networking.Saved.Users:
-                if user.udp_address == address:
+                if user.address[0] == address[0]:
                     sender = user
                     break
 
@@ -57,7 +57,7 @@ def handle_udp():
 
 def handle_tcp_client(client_socket, address):
     user = User(client_socket, address, server_udp_socket)
-    Networking.Global.Users.append(user)
+    Networking.Saved.Users.append(user)
     print(f"[TCP] User connected: {address}")
 
 

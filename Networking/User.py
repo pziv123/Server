@@ -12,6 +12,7 @@ class User:
 
         self.cipher = None
         self.shared_key = None
+        self.udp_address = None
 
         threading.Thread(target=self.handle_tcp,daemon=True).start()
 
