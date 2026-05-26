@@ -1,6 +1,8 @@
 from socket import socket
 import threading
 
+import Networking
+
 from Utility.cipher import Cipher
 
 
@@ -64,3 +66,8 @@ class User:
             self.tcp_socket.close()
         except:
             pass
+
+        if self in Networking.Saved.Users:
+            Networking.Saved.Users.remove(self)
+
+        print(f"[DISCONNECT] {self.address}")
